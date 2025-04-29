@@ -44,5 +44,6 @@ func NewBaseServer(cfg Config) *BaseServer {
 	return &BaseServer{
 		Config: cfg,
 		Done:   make(chan struct{}),
+		Mu:     sync.RWMutex{},
 	}
 }

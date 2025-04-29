@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/captv89/nmea-simulator/pkg/nmea0183/environment"
@@ -29,7 +30,6 @@ func NewTCPServer(cfg Config) *TCPServer {
 // Start begins the TCP server
 func (s *TCPServer) Start(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port)
-
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to start TCP server: %w", err)
@@ -38,82 +38,52 @@ func (s *TCPServer) Start(ctx context.Context) error {
 
 	s.Config.Logger.Info().Str("addr", addr).Msg("starting TCP server")
 
-	// Handle client connections
-	go s.acceptConnections(ctx)
+	go s.acceptLoop(ctx)
+	go s.broadcastLoop(ctx)
 
-	// Handle server shutdown
-	go func() {
-		<-ctx.Done()
-		s.Config.Logger.Info().Msg("shutting down TCP server")
-		s.Stop()
-	}()
-
-	return nil
+	<-ctx.Done()
+	return s.Stop()
 }
 
-// Stop closes the listener and all client connections
-func (s *TCPServer) Stop() error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	if s.listener != nil {
-		s.listener.Close()
-	}
-
-	for client := range s.clients {
-		client.Close()
-		delete(s.clients, client)
-	}
-
-	close(s.Done)
-	return nil
-}
-
-func (s *TCPServer) acceptConnections(ctx context.Context) {
+func (s *TCPServer) acceptLoop(ctx context.Context) {
 	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				s.Config.Logger.Error().Err(err).Msg("failed to accept connection")
-				continue
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.Done:
+			return
+		default:
+			if conn, err := s.listener.Accept(); err == nil {
+				s.Mu.Lock()
+				s.clients[conn] = true
+				s.Mu.Unlock()
+
+				s.Config.Logger.Info().
+					Str("remote", conn.RemoteAddr().String()).
+					Msg("new TCP client connected")
+
+				// Monitor connection for closure
+				go func(conn net.Conn) {
+					select {
+					case <-s.Done:
+						conn.Close()
+					case <-ctx.Done():
+						conn.Close()
+					}
+				}(conn)
+			} else if !strings.Contains(err.Error(), "use of closed network connection") {
+				s.Config.Logger.Error().Err(err).Msg("accept error")
 			}
 		}
-
-		s.Mu.Lock()
-		s.clients[conn] = true
-		s.Mu.Unlock()
-
-		s.Config.Logger.Info().Str("remote", conn.RemoteAddr().String()).Msg("new client connected")
-
-		// Handle individual client in a goroutine
-		go s.handleClient(ctx, conn)
 	}
 }
 
-func (s *TCPServer) handleClient(ctx context.Context, conn net.Conn) {
-	defer func() {
-		s.Mu.Lock()
-		delete(s.clients, conn)
-		s.Mu.Unlock()
-		conn.Close()
-		s.Config.Logger.Info().Str("remote", conn.RemoteAddr().String()).Msg("client disconnected")
-	}()
-
+func (s *TCPServer) broadcastLoop(ctx context.Context) {
 	ticker := time.NewTicker(s.Config.UpdateInterval)
 	defer ticker.Stop()
 
-	// Calculate bytes per second based on baud rate
-	bytesPerSecond := s.Config.BaudRate / 10 // 8 data bits + 1 start bit + 1 stop bit = 10 bits per byte
-	if bytesPerSecond == 0 {
-		bytesPerSecond = 4800 / 10 // Default to 4800 baud if not set
-	}
-
-	// Create a rate limiter based on baud rate
-	limiter := time.NewTicker(time.Second / time.Duration(bytesPerSecond))
-	defer limiter.Stop()
+	// Calculate bytes per interval based on baud rate
+	bytesPerInterval := int(float64(s.Config.BaudRate) * s.Config.UpdateInterval.Seconds() / 8)
 
 	for {
 		select {
@@ -123,22 +93,34 @@ func (s *TCPServer) handleClient(ctx context.Context, conn net.Conn) {
 			return
 		case <-ticker.C:
 			sentences := s.generateSentences()
-			for _, sentence := range sentences {
-				// Add CRLF as per NMEA spec
-				sentence = sentence + "\r\n"
-				data := []byte(sentence)
+			s.broadcast(sentences, bytesPerInterval)
+		}
+	}
+}
 
-				// Send each byte at the configured baud rate
-				for _, b := range data {
-					<-limiter.C // Wait for the next tick before sending byte
-					_, err := conn.Write([]byte{b})
-					if err != nil {
-						s.Config.Logger.Error().Err(err).
-							Str("remote", conn.RemoteAddr().String()).
-							Msg("failed to write to client")
-						return
-					}
-				}
+func (s *TCPServer) broadcast(sentences []string, bytesPerInterval int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	var totalBytes int
+	for conn := range s.clients {
+		for _, sentence := range sentences {
+			if totalBytes >= bytesPerInterval {
+				return // Respect baud rate limit
+			}
+
+			data := []byte(sentence + "\r\n")
+			totalBytes += len(data)
+
+			_, err := conn.Write(data)
+			if err != nil {
+				s.Config.Logger.Error().
+					Err(err).
+					Str("remote", conn.RemoteAddr().String()).
+					Msg("failed to send message")
+				conn.Close()
+				delete(s.clients, conn)
+				break
 			}
 		}
 	}
@@ -174,4 +156,32 @@ func (s *TCPServer) generateSentences() []string {
 	}
 
 	return sentences
+}
+
+// Stop closes all client connections and stops the server
+func (s *TCPServer) Stop() error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	select {
+	case <-s.Done:
+		return nil
+	default:
+		close(s.Done)
+	}
+
+	// Close all client connections
+	for conn := range s.clients {
+		conn.Close()
+		delete(s.clients, conn)
+	}
+
+	// Close listener
+	if s.listener != nil {
+		err := s.listener.Close()
+		s.listener = nil
+		return err
+	}
+
+	return nil
 }
