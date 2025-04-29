@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>NMEA Simulator - WebSocket Client</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+
+        #output {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre;
+        }
+
+        .controls {
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 5px 10px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>NMEA Simulator - WebSocket Client</h1>
+    <div class="controls">
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="clearOutput()">Clear</button>
+    </div>
+    <div id="output"></div>
+
+    <script>
+        let ws = null;
+        const output = document.getElementById('output');
+
+        function connect() {
+            if (ws) {
+                output.innerHTML += 'Already connected\n';
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/ws';
+
+            output.innerHTML += `Connecting to ${wsUrl}...\n`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                output.innerHTML += 'Connected!\n';
+            };
+
+            ws.onmessage = (event) => {
+                output.innerHTML += event.data + '\n';
+                output.scrollTop = output.scrollHeight;
+            };
+
+            ws.onclose = () => {
+                output.innerHTML += 'Disconnected\n';
+                ws = null;
+            };
+
+            ws.onerror = (error) => {
+                output.innerHTML += 'Error: ' + error.message + '\n';
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function clearOutput() {
+            output.innerHTML = '';
+        }
+    </script>
+</body>
+
+</html>
