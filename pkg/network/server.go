@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/captv89/nmea-simulator/pkg/nmea2000/pgn"
 	"github.com/rs/zerolog"
 )
 
@@ -15,6 +16,12 @@ type Server interface {
 	Stop() error
 }
 
+// NMEA2000Server represents a server that can stream NMEA 2000 messages
+type NMEA2000Server interface {
+	Server
+	SendPGN(msg pgn.Message) error
+}
+
 // Config holds server configuration
 type Config struct {
 	Host            string
@@ -22,7 +29,8 @@ type Config struct {
 	UpdateInterval  time.Duration
 	Logger          zerolog.Logger
 	SentenceOptions SentenceOptions
-	BaudRate        int // Added baud rate configuration
+	BaudRate        int
+	Protocol        string // "nmea0183" or "nmea2000"
 }
 
 // SentenceOptions configures which NMEA sentences to generate

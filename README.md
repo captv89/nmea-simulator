@@ -1,17 +1,28 @@
 # NMEA Simulator
 
-A versatile NMEA 0183 sentence simulator that generates realistic marine navigation and environmental data over TCP and WebSocket protocols.
+A versatile marine data simulator supporting both NMEA 0183 and NMEA 2000 protocols simultaneously.
 
 ## Features
 
-- **Multiple Protocol Support**
-  - TCP server (default NMEA port 10110)
-  - WebSocket server with web interface
+### NMEA 0183
+- **TCP Server** (default port 10110)
+- **WebSocket Server** with web interface (default port 8080)
 - **Configurable Baud Rates**: 4800, 9600, 19200, 38400
-- **NMEA 0183 Sentences**
+- **Supported Sentences**
   - Position: GGA (GPS Fix), GLL (Geographic Position)
   - Navigation: RMC (Recommended Minimum), HDT (True Heading), VTG (Track & Speed), XTE (Cross-Track Error)
   - Environment: DBT (Depth Below Transducer), MTW (Water Temperature), MWV (Wind), VHW (Water Speed & Heading), DPT (Depth)
+
+### NMEA 2000
+- **TCP Server** (default port 10200)
+- **WebSocket Server** with web interface (default port 8081)
+- **Supported PGNs**
+  - 127250 (Vessel Heading)
+  - 128259 (Speed)
+  - 128267 (Water Depth)
+  - 129025 (Position Rapid Update)
+  - 129026 (COG & SOG Rapid Update)
+  - 130306 (Wind Data)
 
 ## Installation
 
@@ -29,23 +40,93 @@ make build
 
 ## Usage
 
-Run with default settings:
+By default, the simulator runs both NMEA 0183 and NMEA 2000 protocols simultaneously:
 ```bash
 nmeasim
 ```
 
+### Run Specific Protocol
+
+Run only NMEA 0183:
+```bash
+nmeasim --protocol nmea0183
+```
+
+Run only NMEA 2000:
+```bash
+nmeasim --protocol nmea2000
+```
+
 ### Command Line Options
 
-- `--ws-port`: WebSocket server port (default: 8080)
-- `--tcp-port`: TCP server port (default: 10110)
-- `--host`: Host to bind servers to (default: "0.0.0.0")
-- `--interval`: NMEA sentence update interval (default: 1s)
+Protocol Selection:
+- `--protocol`: Protocol to use ("both", "nmea0183", or "nmea2000", default: "both")
+
+NMEA 0183 Options:
+- `--nmea0183-ws-port`: WebSocket server port (default: 8080)
+- `--nmea0183-tcp-port`: TCP server port (default: 10110)
 - `--baud`: Baud rate for TCP output (default: 4800)
 
-Example with custom settings:
+NMEA 2000 Options:
+- `--nmea2000-ws-port`: WebSocket server port (default: 8081)
+- `--nmea2000-tcp-port`: TCP port (default: 10200)
+
+Common Options:
+- `--host`: Host to bind servers to (default: "0.0.0.0")
+- `--interval`: Data update interval (default: 1s)
+
+## Web Interface
+
+The web interface now supports viewing both NMEA 0183 and NMEA 2000 data simultaneously. Access it at:
+- NMEA 0183: http://localhost:8080
+- NMEA 2000: http://localhost:8081
+
+## Viewing TCP Data
+
+You can use common terminal commands to view the NMEA data streams directly:
+
+### Using netcat (nc)
+
+For NMEA 0183:
 ```bash
-nmeasim --ws-port 8081 --tcp-port 10111 --interval 500ms --baud 9600
+nc localhost 10110
 ```
+
+For NMEA 2000:
+```bash
+nc localhost 10200
+```
+
+### Using telnet
+
+For NMEA 0183:
+```bash
+telnet localhost 10110
+```
+
+For NMEA 2000:
+```bash
+telnet localhost 10200
+```
+
+### Using socat with hex dump
+
+To view data with timestamps and hex dump:
+
+For NMEA 0183:
+```bash
+socat TCP:localhost:10110 STDOUT | hexdump -C
+```
+
+For NMEA 2000:
+```bash
+socat TCP:localhost:10200 STDOUT | hexdump -C
+```
+
+Note: You may need to install these tools first:
+- macOS: `brew install netcat socat`
+- Ubuntu/Debian: `sudo apt install netcat-openbsd socat`
+- Windows: Use PowerShell's `Test-NetConnection` or install WSL
 
 ## Development
 
