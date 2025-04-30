@@ -69,7 +69,7 @@ changelog:
 
 release:
   github:
-    owner: scorpion
+    owner: captv89
     name: nmea-simulator
   draft: false
   prerelease: auto
