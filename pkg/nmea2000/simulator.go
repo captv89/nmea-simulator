@@ -40,6 +40,12 @@ func (s *Simulator) Start(ctx context.Context) error {
 		return err
 	}
 
+	if s.webSocket != nil {
+		if err := s.webSocket.Start(ctx); err != nil {
+			return err
+		}
+	}
+
 	go s.simulationLoop(ctx)
 	return nil
 }
@@ -87,6 +93,21 @@ func (s *Simulator) generateAndSendMessages() {
 		s.webSocket.SendPGN(msg)
 	}
 
+	// Generate and send speed data
+	speed := pgn.SpeedData{
+		SpeedWater:  2.5, // 2.5 m/s through water
+		SpeedGround: 2.7, // 2.7 m/s over ground
+		Reference:   0,   // Paddle wheel
+	}
+	msg = pgn.Message{
+		PGN:  128259,
+		Data: pgn.EncodeSpeedData(speed),
+	}
+	s.transport.SendPGN(msg)
+	if s.webSocket != nil {
+		s.webSocket.SendPGN(msg)
+	}
+
 	// Generate and send water depth
 	depth := pgn.WaterDepth{
 		Depth:    10.5, // 10.5 meters
@@ -96,6 +117,20 @@ func (s *Simulator) generateAndSendMessages() {
 	msg = pgn.Message{
 		PGN:  128267,
 		Data: pgn.EncodeWaterDepth(depth),
+	}
+	s.transport.SendPGN(msg)
+	if s.webSocket != nil {
+		s.webSocket.SendPGN(msg)
+	}
+
+	// Generate and send position data
+	pos := pgn.Position{
+		Latitude:  48.1964, // 48°11'47"N
+		Longitude: 16.3637, // 16°21'49"E
+	}
+	msg = pgn.Message{
+		PGN:  129025,
+		Data: pgn.EncodePosition(pos),
 	}
 	s.transport.SendPGN(msg)
 	if s.webSocket != nil {

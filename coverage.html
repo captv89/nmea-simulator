@@ -3,8 +3,7 @@
 <html>
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-                <title>nmeasim: Go Coverage Report</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>nmeasim: Go Coverage Report</title>
 		<style>
 			body {
 				background: black;
@@ -54,7 +53,7 @@
 	<body>
 		<div id="topbar">
 			<div id="nav">
-                                <select id="files" title="Select a file to view coverage">
+				<select id="files">
 				
 				<option value="file0">github.com/captv89/nmea-simulator/cmd/nmeasim/main.go (0.0%)</option>
 				
@@ -62,15 +61,23 @@
 				
 				<option value="file2">github.com/captv89/nmea-simulator/pkg/network/tcp.go (1.4%)</option>
 				
-				<option value="file3">github.com/captv89/nmea-simulator/pkg/network/websocket.go (52.6%)</option>
+				<option value="file3">github.com/captv89/nmea-simulator/pkg/network/tcp2000.go (16.0%)</option>
 				
-				<option value="file4">github.com/captv89/nmea-simulator/pkg/nmea0183/environment/environment.go (100.0%)</option>
+				<option value="file4">github.com/captv89/nmea-simulator/pkg/network/websocket.go (52.6%)</option>
 				
-				<option value="file5">github.com/captv89/nmea-simulator/pkg/nmea0183/navigation/navigation.go (100.0%)</option>
+				<option value="file5">github.com/captv89/nmea-simulator/pkg/network/websocket2000.go (29.9%)</option>
 				
-				<option value="file6">github.com/captv89/nmea-simulator/pkg/nmea0183/position/position.go (100.0%)</option>
+				<option value="file6">github.com/captv89/nmea-simulator/pkg/nmea0183/environment/environment.go (100.0%)</option>
 				
-				<option value="file7">github.com/captv89/nmea-simulator/pkg/nmea0183/util/util.go (100.0%)</option>
+				<option value="file7">github.com/captv89/nmea-simulator/pkg/nmea0183/navigation/navigation.go (100.0%)</option>
+				
+				<option value="file8">github.com/captv89/nmea-simulator/pkg/nmea0183/position/position.go (100.0%)</option>
+				
+				<option value="file9">github.com/captv89/nmea-simulator/pkg/nmea0183/util/util.go (100.0%)</option>
+				
+				<option value="file10">github.com/captv89/nmea-simulator/pkg/nmea2000/pgn/encoder.go (100.0%)</option>
+				
+				<option value="file11">github.com/captv89/nmea-simulator/pkg/nmea2000/simulator.go (93.5%)</option>
 				
 				</select>
 			</div>
@@ -84,7 +91,9 @@
 		</div>
 		<div id="content">
 		
-		<pre class="file" id="file0" style="display: none">package main
+		<pre class="file" id="file0" style="display: none">// Package main provides the NMEA simulator command line interface
+// supporting both NMEA 0183 and NMEA 2000 protocols
+package main
 
 import (
         "context"
@@ -94,16 +103,26 @@ import (
         "time"
 
         "github.com/captv89/nmea-simulator/pkg/network"
+        "github.com/captv89/nmea-simulator/pkg/nmea2000"
         "github.com/rs/zerolog"
 )
 
 func main() <span class="cov0" title="0">{
         // Command line flags
-        wsPort := flag.Int("ws-port", 8080, "WebSocket server port")
-        tcpPort := flag.Int("tcp-port", 10110, "TCP server port (default NMEA port)")
+        protocol := flag.String("protocol", "both", "Protocol to use: nmea0183, nmea2000, or both")
+
+        // NMEA 0183 flags
+        nmea0183WSPort := flag.Int("nmea0183-ws-port", 8080, "WebSocket server port for NMEA 0183")
+        nmea0183TCPPort := flag.Int("nmea0183-tcp-port", 10110, "TCP server port for NMEA 0183")
+        baudRate := flag.Int("baud", 4800, "Baud rate for NMEA 0183 TCP output (4800, 9600, 19200, 38400)")
+
+        // NMEA 2000 flags
+        nmea2000WSPort := flag.Int("nmea2000-ws-port", 8081, "WebSocket server port for NMEA 2000")
+        nmea2000TCPPort := flag.Int("nmea2000-tcp-port", 10200, "TCP port for NMEA 2000")
+
+        // Common flags
         host := flag.String("host", "0.0.0.0", "Host to bind servers to")
-        interval := flag.Duration("interval", time.Second, "NMEA sentence update interval")
-        baudRate := flag.Int("baud", 4800, "Baud rate for TCP output (4800, 9600, 19200, 38400)")
+        interval := flag.Duration("interval", time.Second, "Data update interval")
         flag.Parse()
 
         // Validate baud rate
@@ -115,56 +134,127 @@ func main() <span class="cov0" title="0">{
         // Setup logger
         <span class="cov0" title="0">logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
-        // Create server configuration
-        cfg := network.Config{
-                Host:           *host,
-                UpdateInterval: *interval,
-                Logger:         logger,
-                BaudRate:       *baudRate,
-                SentenceOptions: network.SentenceOptions{
-                        EnablePosition:    true,
-                        EnableNavigation:  true,
-                        EnableEnvironment: true,
-                },
-        }
-
         // Create context for graceful shutdown
         ctx, cancel := context.WithCancel(context.Background())
         defer cancel()
 
-        // Create WebSocket server
-        wsCfg := cfg
-        wsCfg.Port = *wsPort
-        wsServer := network.NewWebSocketServer(wsCfg)
-
-        // Create TCP server
-        tcpCfg := cfg
-        tcpCfg.Port = *tcpPort
-        tcpServer := network.NewTCPServer(tcpCfg)
-
-        // Start servers
-        go func() </span><span class="cov0" title="0">{
-                if err := wsServer.Start(ctx); err != nil </span><span class="cov0" title="0">{
-                        logger.Error().Err(err).Msg("websocket server failed")
-                }</span>
-        }()
-
-        <span class="cov0" title="0">go func() </span><span class="cov0" title="0">{
-                if err := tcpServer.Start(ctx); err != nil </span><span class="cov0" title="0">{
-                        logger.Error().Err(err).Msg("tcp server failed")
-                }</span>
-        }()
-
         // Handle graceful shutdown
-        <span class="cov0" title="0">sigChan := make(chan os.Signal, 1)
+        sigChan := make(chan os.Signal, 1)
         signal.Notify(sigChan, os.Interrupt)
 
-        &lt;-sigChan
-        logger.Info().Msg("shutting down servers...")
+        var nmea0183Servers []network.Server
+        var nmea2000Sim *nmea2000.Simulator
 
-        cancel()
-        wsServer.Stop()
-        tcpServer.Stop()</span>
+        // Start NMEA 0183 servers if needed
+        if *protocol == "both" || *protocol == "nmea0183" </span><span class="cov0" title="0">{
+                // Create NMEA 0183 server configuration
+                cfg := network.Config{
+                        Host:           *host,
+                        UpdateInterval: *interval,
+                        Logger:         logger,
+                        BaudRate:       *baudRate,
+                        Protocol:       "nmea0183",
+                        SentenceOptions: network.SentenceOptions{
+                                EnablePosition:    true,
+                                EnableNavigation:  true,
+                                EnableEnvironment: true,
+                        },
+                }
+
+                // Create WebSocket server
+                wsCfg := cfg
+                wsCfg.Port = *nmea0183WSPort
+                wsServer := network.NewWebSocketServer(wsCfg)
+                nmea0183Servers = append(nmea0183Servers, wsServer)
+
+                // Create TCP server
+                tcpCfg := cfg
+                tcpCfg.Port = *nmea0183TCPPort
+                tcpServer := network.NewTCPServer(tcpCfg)
+                nmea0183Servers = append(nmea0183Servers, tcpServer)
+
+                // Start NMEA 0183 servers
+                for _, server := range nmea0183Servers </span><span class="cov0" title="0">{
+                        srv := server // Create new variable for goroutine
+                        go func() </span><span class="cov0" title="0">{
+                                if err := srv.Start(ctx); err != nil </span><span class="cov0" title="0">{
+                                        logger.Error().Err(err).Msg("NMEA 0183 server failed")
+                                }</span>
+                        }()
+                }
+
+                <span class="cov0" title="0">logger.Info().
+                        Int("ws_port", *nmea0183WSPort).
+                        Int("tcp_port", *nmea0183TCPPort).
+                        Msg("NMEA 0183 simulator started")</span>
+        }
+
+        // Start NMEA 2000 servers if needed
+        <span class="cov0" title="0">if *protocol == "both" || *protocol == "nmea2000" </span><span class="cov0" title="0">{
+                // Create NMEA 2000 TCP server
+                tcpCfg := network.Config{
+                        Host:           *host,
+                        Port:           *nmea2000TCPPort,
+                        UpdateInterval: *interval,
+                        Logger:         logger,
+                        Protocol:       "nmea2000",
+                }
+                tcpServer := network.NewTCP2000Server(tcpCfg)
+
+                // Create NMEA 2000 WebSocket server
+                wsCfg := network.Config{
+                        Host:           *host,
+                        Port:           *nmea2000WSPort,
+                        UpdateInterval: *interval,
+                        Logger:         logger,
+                        Protocol:       "nmea2000",
+                }
+                wsServer := network.NewWebSocket2000Server(wsCfg)
+
+                // Create and start NMEA 2000 simulator
+                nmea2000Sim = nmea2000.New(nmea2000.Config{
+                        Transport:    tcpServer,
+                        WebSocket:    wsServer,
+                        UpdatePeriod: *interval,
+                })
+
+                // Start WebSocket server
+                go func() </span><span class="cov0" title="0">{
+                        if err := wsServer.Start(ctx); err != nil </span><span class="cov0" title="0">{
+                                logger.Error().Err(err).Msg("NMEA 2000 websocket server failed")
+                        }</span>
+                }()
+
+                // Start simulator (which starts TCP server)
+                <span class="cov0" title="0">if err := nmea2000Sim.Start(ctx); err != nil </span><span class="cov0" title="0">{
+                        logger.Error().Err(err).Msg("NMEA 2000 simulator failed to start")
+                        os.Exit(1)
+                }</span>
+
+                <span class="cov0" title="0">logger.Info().
+                        Int("ws_port", *nmea2000WSPort).
+                        Int("tcp_port", *nmea2000TCPPort).
+                        Msg("NMEA 2000 simulator started")</span>
+        }
+
+        <span class="cov0" title="0">if *protocol != "both" &amp;&amp; *protocol != "nmea0183" &amp;&amp; *protocol != "nmea2000" </span><span class="cov0" title="0">{
+                logger.Error().Str("protocol", *protocol).Msg("invalid protocol specified")
+                os.Exit(1)
+        }</span>
+
+        // Wait for interrupt signal
+        <span class="cov0" title="0">&lt;-sigChan
+        logger.Info().Msg("shutting down simulators...")
+
+        // Stop NMEA 0183 servers
+        for _, server := range nmea0183Servers </span><span class="cov0" title="0">{
+                server.Stop()
+        }</span>
+
+        // Stop NMEA 2000 simulator
+        <span class="cov0" title="0">if nmea2000Sim != nil </span><span class="cov0" title="0">{
+                nmea2000Sim.Stop()
+        }</span>
 }
 </pre>
 		
@@ -176,6 +266,7 @@ import (
         "sync"
         "time"
 
+        "github.com/captv89/nmea-simulator/pkg/nmea2000/pgn"
         "github.com/rs/zerolog"
 )
 
@@ -185,6 +276,12 @@ type Server interface {
         Stop() error
 }
 
+// NMEA2000Server represents a server that can stream NMEA 2000 messages
+type NMEA2000Server interface {
+        Server
+        SendPGN(msg pgn.Message) error
+}
+
 // Config holds server configuration
 type Config struct {
         Host            string
@@ -192,7 +289,8 @@ type Config struct {
         UpdateInterval  time.Duration
         Logger          zerolog.Logger
         SentenceOptions SentenceOptions
-        BaudRate        int // Added baud rate configuration
+        BaudRate        int
+        Protocol        string // "nmea0183" or "nmea2000"
 }
 
 // SentenceOptions configures which NMEA sentences to generate
@@ -409,6 +507,129 @@ func (s *TCPServer) Stop() error <span class="cov0" title="0">{
 </pre>
 		
 		<pre class="file" id="file3" style="display: none">package network
+
+import (
+        "context"
+        "fmt"
+        "net"
+
+        "github.com/captv89/nmea-simulator/pkg/nmea2000/pgn"
+)
+
+// TCP2000Server implements NMEA 2000 message streaming over TCP
+type TCP2000Server struct {
+        *BaseServer
+        listener net.Listener
+        clients  map[net.Conn]bool
+}
+
+// NewTCP2000Server creates a new TCP server instance for NMEA 2000
+func NewTCP2000Server(cfg Config) *TCP2000Server <span class="cov8" title="1">{
+        return &amp;TCP2000Server{
+                BaseServer: NewBaseServer(cfg),
+                clients:    make(map[net.Conn]bool),
+        }
+}</span>
+
+// Start begins the TCP server
+func (s *TCP2000Server) Start(ctx context.Context) error <span class="cov0" title="0">{
+        addr := fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port)
+        listener, err := net.Listen("tcp", addr)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to start TCP listener: %w", err)
+        }</span>
+        <span class="cov0" title="0">s.listener = listener
+
+        go s.acceptLoop(ctx)
+
+        s.Config.Logger.Info().
+                Str("addr", addr).
+                Msg("NMEA 2000 TCP server started")
+
+        return nil</span>
+}
+
+// Stop terminates the TCP server
+func (s *TCP2000Server) Stop() error <span class="cov0" title="0">{
+        if s.listener != nil </span><span class="cov0" title="0">{
+                s.listener.Close()
+        }</span>
+        <span class="cov0" title="0">close(s.Done)
+
+        s.Mu.Lock()
+        for client := range s.clients </span><span class="cov0" title="0">{
+                client.Close()
+        }</span>
+        <span class="cov0" title="0">s.clients = make(map[net.Conn]bool)
+        s.Mu.Unlock()
+
+        return nil</span>
+}
+
+// SendPGN sends a NMEA 2000 message to all connected clients
+func (s *TCP2000Server) SendPGN(msg pgn.Message) error <span class="cov0" title="0">{
+        s.Mu.RLock()
+        defer s.Mu.RUnlock()
+
+        frame := formatPGNMessage(msg)
+
+        for client := range s.clients </span><span class="cov0" title="0">{
+                _, err := client.Write([]byte(frame))
+                if err != nil </span><span class="cov0" title="0">{
+                        // Remove failed client
+                        s.Mu.RUnlock()
+                        s.Mu.Lock()
+                        delete(s.clients, client)
+                        client.Close()
+                        s.Mu.Unlock()
+                        s.Mu.RLock()
+                }</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (s *TCP2000Server) acceptLoop(ctx context.Context) <span class="cov0" title="0">{
+        for </span><span class="cov0" title="0">{
+                select </span>{
+                case &lt;-ctx.Done():<span class="cov0" title="0">
+                        return</span>
+                case &lt;-s.Done:<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        conn, err := s.listener.Accept()
+                        if err != nil </span><span class="cov0" title="0">{
+                                s.Config.Logger.Error().Err(err).Msg("Failed to accept connection")
+                                continue</span>
+                        }
+                        <span class="cov0" title="0">s.Mu.Lock()
+                        s.clients[conn] = true
+                        s.Mu.Unlock()
+                        s.Config.Logger.Info().
+                                Str("remote", conn.RemoteAddr().String()).
+                                Msg("New NMEA 2000 client connected")</span>
+                }
+        }
+}
+
+// formatPGNMessage formats a NMEA 2000 message for TCP transport
+// Format: $PNMEA2K,PGN,Length,Data*Checksum
+func formatPGNMessage(msg pgn.Message) string <span class="cov8" title="1">{
+        var checksum byte
+        data := fmt.Sprintf("$PNMEA2K,%d,%d,", msg.PGN, len(msg.Data))
+
+        // Calculate checksum (XOR of all bytes after $ and before *)
+        for i := 1; i &lt; len(data); i++ </span><span class="cov8" title="1">{
+                checksum ^= data[i]
+        }</span>
+        <span class="cov8" title="1">for _, b := range msg.Data </span><span class="cov8" title="1">{
+                checksum ^= b
+        }</span>
+
+        <span class="cov8" title="1">return fmt.Sprintf("%s%X*%02X\r\n", data, msg.Data, checksum)</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package network
 
 import (
         "context"
@@ -668,7 +889,211 @@ func (s *WebSocketServer) broadcast(sentences []string) <span class="cov8" title
 }
 </pre>
 		
-		<pre class="file" id="file4" style="display: none">// Package environment provides NMEA-0183 environment-related sentence generators
+		<pre class="file" id="file5" style="display: none">// Package network provides network streaming capabilities for NMEA sentences
+package network
+
+import (
+        "context"
+        "fmt"
+        "io/fs"
+        "net/http"
+        "strings"
+        "sync"
+        "time"
+
+        "github.com/captv89/nmea-simulator/pkg/nmea2000/pgn"
+        "github.com/gorilla/websocket"
+)
+
+// WebSocket2000Server implements NMEA 2000 message streaming over WebSocket
+type WebSocket2000Server struct {
+        *BaseServer
+        upgrader websocket.Upgrader
+        clients  map[*websocket.Conn]bool
+        clientMu sync.Mutex
+}
+
+// NewWebSocket2000Server creates a new WebSocket server instance for NMEA 2000
+func NewWebSocket2000Server(cfg Config) *WebSocket2000Server <span class="cov8" title="1">{
+        return &amp;WebSocket2000Server{
+                BaseServer: NewBaseServer(cfg),
+                upgrader: websocket.Upgrader{
+                        CheckOrigin: func(_ *http.Request) bool </span><span class="cov8" title="1">{
+                                return true // Allow all origins in development
+                        }</span>,
+                },
+                clients: make(map[*websocket.Conn]bool),
+        }
+}
+
+// Start begins the WebSocket server
+func (s *WebSocket2000Server) Start(ctx context.Context) error <span class="cov0" title="0">{
+        addr := fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port)
+
+        // Setup routes
+        mux := http.NewServeMux()
+
+        // Serve static files from the embedded filesystem
+        fsys, err := fs.Sub(webContent, "web")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to setup static file serving: %w", err)
+        }</span>
+
+        // Create a file server for static files
+        <span class="cov0" title="0">fsRoot := http.FileServer(http.FS(fsys))
+
+        // Handle root path specifically
+        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) </span><span class="cov0" title="0">{
+                if r.URL.Path == "/" </span><span class="cov0" title="0">{
+                        // Directly serve index.html for root path
+                        data, err := fs.ReadFile(fsys, "index.html")
+                        if err != nil </span><span class="cov0" title="0">{
+                                s.Config.Logger.Error().Err(err).Msg("failed to read index.html")
+                                http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+                                return
+                        }</span>
+                        <span class="cov0" title="0">w.Header().Set("Content-Type", "text/html")
+                        w.Write(data)
+                        return</span>
+                }
+
+                // For all other paths, use the file server
+                <span class="cov0" title="0">if strings.HasSuffix(r.URL.Path, "/") </span><span class="cov0" title="0">{
+                        http.NotFound(w, r)
+                        return
+                }</span>
+                <span class="cov0" title="0">fsRoot.ServeHTTP(w, r)</span>
+        })
+
+        // Handle WebSocket path for NMEA 2000
+        <span class="cov0" title="0">mux.HandleFunc("/nmea2000", s.handleWebSocket)
+
+        // Create server with logging middleware
+        handler := s.loggingMiddleware(mux)
+        server := &amp;http.Server{
+                Addr:    addr,
+                Handler: handler,
+        }
+
+        s.Config.Logger.Info().Str("addr", addr).Msg("starting NMEA 2000 websocket server")
+
+        // Handle server shutdown
+        go func() </span><span class="cov0" title="0">{
+                &lt;-ctx.Done()
+                s.Config.Logger.Info().Msg("shutting down NMEA 2000 websocket server")
+                server.Close()
+        }</span>()
+
+        <span class="cov0" title="0">return server.ListenAndServe()</span>
+}
+
+// Stop terminates the WebSocket server
+func (s *WebSocket2000Server) Stop() error <span class="cov0" title="0">{
+        close(s.Done)
+        s.clientMu.Lock()
+        defer s.clientMu.Unlock()
+        for client := range s.clients </span><span class="cov0" title="0">{
+                client.Close()
+        }</span>
+        <span class="cov0" title="0">s.clients = make(map[*websocket.Conn]bool)
+        return nil</span>
+}
+
+// SendPGN sends a NMEA 2000 message to all connected WebSocket clients
+func (s *WebSocket2000Server) SendPGN(msg pgn.Message) error <span class="cov0" title="0">{
+        s.clientMu.Lock()
+        defer s.clientMu.Unlock()
+
+        frame := formatPGNMessage(msg)
+
+        for client := range s.clients </span><span class="cov0" title="0">{
+                err := client.WriteMessage(websocket.TextMessage, []byte(frame))
+                if err != nil </span><span class="cov0" title="0">{
+                        s.Config.Logger.Error().
+                                Err(err).
+                                Str("remote", client.RemoteAddr().String()).
+                                Msg("Failed to send message")
+
+                        client.Close()
+                        delete(s.clients, client)
+                }</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (s *WebSocket2000Server) handleWebSocket(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        conn, err := s.upgrader.Upgrade(w, r, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                s.Config.Logger.Error().Err(err).Msg("Failed to upgrade connection")
+                return
+        }</span>
+
+        <span class="cov8" title="1">s.clientMu.Lock()
+        s.clients[conn] = true
+        s.clientMu.Unlock()
+
+        s.Config.Logger.Info().
+                Str("remote", conn.RemoteAddr().String()).
+                Msg("New NMEA 2000 WebSocket client connected")
+
+        // Create a done channel for this connection
+        done := make(chan struct{})
+
+        go func() </span><span class="cov8" title="1">{
+                defer func() </span><span class="cov8" title="1">{
+                        s.clientMu.Lock()
+                        delete(s.clients, conn)
+                        s.clientMu.Unlock()
+                        conn.Close()
+                        close(done)
+                        s.Config.Logger.Info().
+                                Str("remote", conn.RemoteAddr().String()).
+                                Msg("NMEA 2000 client disconnected")
+                }</span>()
+
+                <span class="cov8" title="1">for </span><span class="cov8" title="1">{
+                        // Read messages from client (if any)
+                        _, _, err := conn.ReadMessage()
+                        if err != nil </span><span class="cov8" title="1">{
+                                if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) </span><span class="cov0" title="0">{
+                                        s.Config.Logger.Error().Err(err).Msg("WebSocket read error")
+                                }</span>
+                                <span class="cov8" title="1">return</span>
+                        }
+                }
+        }()
+
+        // Wait for client disconnection or context cancellation
+        <span class="cov8" title="1">select </span>{
+        case &lt;-r.Context().Done():<span class="cov0" title="0"></span>
+        case &lt;-s.Done:<span class="cov0" title="0"></span>
+        case &lt;-done:<span class="cov8" title="1"></span>
+        }
+}
+
+// loggingMiddleware wraps an http.Handler and logs requests
+func (s *WebSocket2000Server) loggingMiddleware(next http.Handler) http.Handler <span class="cov0" title="0">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov0" title="0">{
+                start := time.Now()
+                s.Config.Logger.Info().
+                        Str("method", r.Method).
+                        Str("path", r.URL.Path).
+                        Str("remote", r.RemoteAddr).
+                        Msg("incoming request")
+
+                next.ServeHTTP(w, r)
+
+                s.Config.Logger.Info().
+                        Str("method", r.Method).
+                        Str("path", r.URL.Path).
+                        Str("remote", r.RemoteAddr).
+                        Dur("duration", time.Since(start)).
+                        Msg("request completed")
+        }</span>)
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">// Package environment provides NMEA-0183 environment-related sentence generators
 package environment
 
 import (
@@ -750,7 +1175,7 @@ func GenerateVHW() string <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file5" style="display: none">// Package navigation provides NMEA-0183 navigation-related sentence generators
+		<pre class="file" id="file7" style="display: none">// Package navigation provides NMEA-0183 navigation-related sentence generators
 package navigation
 
 import (
@@ -836,7 +1261,7 @@ func GenerateXTE() string <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">// Package position provides NMEA-0183 position-related sentence generators
+		<pre class="file" id="file8" style="display: none">// Package position provides NMEA-0183 position-related sentence generators
 package position
 
 import (
@@ -909,7 +1334,7 @@ func GenerateGLL() string <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">// Package util provides utility functions for NMEA sentence generation
+		<pre class="file" id="file9" style="display: none">// Package util provides utility functions for NMEA sentence generation
 package util
 
 import (
@@ -954,6 +1379,308 @@ func AppendChecksum(sentence string) string <span class="cov8" title="1">{
 
         // Format the checksum as a two-character uppercase hexadecimal
         <span class="cov8" title="1">return fmt.Sprintf("%s*%02X", sentence, checksum)</span>
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package pgn
+
+import (
+        "encoding/binary"
+)
+
+// VesselHeading represents PGN 127250 data
+type VesselHeading struct {
+        Heading   float64 // Radians
+        Deviation float64 // Radians
+        Variation float64 // Radians
+        Reference uint8   // 0=True, 1=Magnetic
+        Reserved  uint8
+}
+
+// EncodeVesselHeading encodes PGN 127250 data
+func EncodeVesselHeading(h VesselHeading) []byte <span class="cov8" title="1">{
+        data := make([]byte, 8)
+
+        // Convert heading to radians * 10000
+        heading := uint16(h.Heading * 10000)
+        binary.LittleEndian.PutUint16(data[0:2], heading)
+
+        // Deviation
+        deviation := int16(h.Deviation * 10000)
+        binary.LittleEndian.PutUint16(data[2:4], uint16(deviation))
+
+        // Variation
+        variation := int16(h.Variation * 10000)
+        binary.LittleEndian.PutUint16(data[4:6], uint16(variation))
+
+        // Reference and reserved
+        data[6] = h.Reference
+        data[7] = h.Reserved
+
+        return data
+}</span>
+
+// WaterDepth represents PGN 128267 data
+type WaterDepth struct {
+        Depth    float64 // Meters
+        Offset   float64 // Meters
+        MaxRange float64 // Meters
+}
+
+// EncodeWaterDepth encodes PGN 128267 data
+func EncodeWaterDepth(d WaterDepth) []byte <span class="cov8" title="1">{
+        data := make([]byte, 8)
+
+        // Convert depth to centimeters (0.01m resolution)
+        depth := uint32(d.Depth * 100)
+        binary.LittleEndian.PutUint32(data[0:4], depth)
+
+        // Offset
+        offset := int16(d.Offset * 100)
+        binary.LittleEndian.PutUint16(data[4:6], uint16(offset))
+
+        // Range
+        maxRange := uint16(d.MaxRange * 100)
+        binary.LittleEndian.PutUint16(data[6:8], maxRange)
+
+        return data
+}</span>
+
+// WindData represents PGN 130306 data
+type WindData struct {
+        WindSpeed float64 // Meters per second
+        WindAngle float64 // Radians
+        Reference uint8   // 0=True, 1=Apparent
+}
+
+// EncodeWindData encodes PGN 130306 data
+func EncodeWindData(w WindData) []byte <span class="cov8" title="1">{
+        data := make([]byte, 8)
+
+        // Wind speed (0.01 m/s resolution)
+        speed := uint16(w.WindSpeed * 100)
+        binary.LittleEndian.PutUint16(data[0:2], speed)
+
+        // Wind angle (0.0001 radian resolution)
+        angle := uint16(w.WindAngle * 10000)
+        binary.LittleEndian.PutUint16(data[2:4], angle)
+
+        // Reference
+        data[4] = w.Reference
+
+        // Reserved bytes
+        data[5] = 0xFF
+        data[6] = 0xFF
+        data[7] = 0xFF
+
+        return data
+}</span>
+
+// Position represents PGN 129025 data
+type Position struct {
+        Latitude  float64 // Degrees
+        Longitude float64 // Degrees
+}
+
+// EncodePosition encodes PGN 129025 data
+func EncodePosition(p Position) []byte <span class="cov8" title="1">{
+        data := make([]byte, 8)
+
+        // Convert latitude to 1e-7 degrees
+        lat := int32(p.Latitude * 1e7)
+        binary.LittleEndian.PutUint32(data[0:4], uint32(lat))
+
+        // Convert longitude to 1e-7 degrees
+        lon := int32(p.Longitude * 1e7)
+        binary.LittleEndian.PutUint32(data[4:8], uint32(lon))
+
+        return data
+}</span>
+
+// SpeedData represents PGN 128259 data
+type SpeedData struct {
+        SpeedWater  float64 // Meters per second
+        SpeedGround float64 // Meters per second
+        Reference   uint8   // 0=Paddle wheel, 1=Pitot tube, 2=Doppler, 3=Correlation
+}
+
+// EncodeSpeedData encodes PGN 128259 data
+func EncodeSpeedData(s SpeedData) []byte <span class="cov8" title="1">{
+        data := make([]byte, 8)
+
+        // Water speed (0.01 m/s resolution)
+        waterSpeed := uint16(s.SpeedWater * 100)
+        binary.LittleEndian.PutUint16(data[0:2], waterSpeed)
+
+        // Ground speed
+        groundSpeed := uint16(s.SpeedGround * 100)
+        binary.LittleEndian.PutUint16(data[2:4], groundSpeed)
+
+        // Reference type
+        data[4] = s.Reference
+
+        // Reserved bytes
+        data[5] = 0xFF
+        data[6] = 0xFF
+        data[7] = 0xFF
+
+        return data
+}</span>
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">// Package nmea2000 provides NMEA 2000 simulation capabilities
+package nmea2000
+
+import (
+        "context"
+        "time"
+
+        "github.com/captv89/nmea-simulator/pkg/network"
+        "github.com/captv89/nmea-simulator/pkg/nmea2000/pgn"
+)
+
+// Simulator represents a NMEA 2000 network simulator
+type Simulator struct {
+        transport    network.NMEA2000Server
+        webSocket    network.NMEA2000Server
+        updatePeriod time.Duration
+        done         chan struct{}
+}
+
+// Config holds simulator configuration
+type Config struct {
+        Transport    network.NMEA2000Server
+        WebSocket    network.NMEA2000Server
+        UpdatePeriod time.Duration
+}
+
+// New creates a new NMEA 2000 simulator
+func New(cfg Config) *Simulator <span class="cov8" title="1">{
+        return &amp;Simulator{
+                transport:    cfg.Transport,
+                webSocket:    cfg.WebSocket,
+                updatePeriod: cfg.UpdatePeriod,
+                done:         make(chan struct{}),
+        }
+}</span>
+
+// Start begins the simulation
+func (s *Simulator) Start(ctx context.Context) error <span class="cov8" title="1">{
+        if err := s.transport.Start(ctx); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if s.webSocket != nil </span><span class="cov8" title="1">{
+                if err := s.webSocket.Start(ctx); err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
+
+        <span class="cov8" title="1">go s.simulationLoop(ctx)
+        return nil</span>
+}
+
+// Stop terminates the simulation
+func (s *Simulator) Stop() error <span class="cov8" title="1">{
+        close(s.done)
+        if err := s.transport.Stop(); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if s.webSocket != nil </span><span class="cov8" title="1">{
+                return s.webSocket.Stop()
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+func (s *Simulator) simulationLoop(ctx context.Context) <span class="cov8" title="1">{
+        ticker := time.NewTicker(s.updatePeriod)
+        defer ticker.Stop()
+
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-ctx.Done():<span class="cov8" title="1">
+                        return</span>
+                case &lt;-s.done:<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov8" title="1">
+                        s.generateAndSendMessages()</span>
+                }
+        }
+}
+
+func (s *Simulator) generateAndSendMessages() <span class="cov8" title="1">{
+        // Generate and send vessel heading
+        heading := pgn.VesselHeading{
+                Heading:   0.5, // ~28.6 degrees
+                Reference: 0,   // True heading
+        }
+        msg := pgn.Message{
+                PGN:  127250,
+                Data: pgn.EncodeVesselHeading(heading),
+        }
+        s.transport.SendPGN(msg)
+        if s.webSocket != nil </span><span class="cov8" title="1">{
+                s.webSocket.SendPGN(msg)
+        }</span>
+
+        // Generate and send speed data
+        <span class="cov8" title="1">speed := pgn.SpeedData{
+                SpeedWater:  2.5, // 2.5 m/s through water
+                SpeedGround: 2.7, // 2.7 m/s over ground
+                Reference:   0,   // Paddle wheel
+        }
+        msg = pgn.Message{
+                PGN:  128259,
+                Data: pgn.EncodeSpeedData(speed),
+        }
+        s.transport.SendPGN(msg)
+        if s.webSocket != nil </span><span class="cov8" title="1">{
+                s.webSocket.SendPGN(msg)
+        }</span>
+
+        // Generate and send water depth
+        <span class="cov8" title="1">depth := pgn.WaterDepth{
+                Depth:    10.5, // 10.5 meters
+                Offset:   -1.5, // Transducer is 1.5m below water line
+                MaxRange: 100.0,
+        }
+        msg = pgn.Message{
+                PGN:  128267,
+                Data: pgn.EncodeWaterDepth(depth),
+        }
+        s.transport.SendPGN(msg)
+        if s.webSocket != nil </span><span class="cov8" title="1">{
+                s.webSocket.SendPGN(msg)
+        }</span>
+
+        // Generate and send position data
+        <span class="cov8" title="1">pos := pgn.Position{
+                Latitude:  48.1964, // 48°11'47"N
+                Longitude: 16.3637, // 16°21'49"E
+        }
+        msg = pgn.Message{
+                PGN:  129025,
+                Data: pgn.EncodePosition(pos),
+        }
+        s.transport.SendPGN(msg)
+        if s.webSocket != nil </span><span class="cov8" title="1">{
+                s.webSocket.SendPGN(msg)
+        }</span>
+
+        // Generate and send wind data
+        <span class="cov8" title="1">wind := pgn.WindData{
+                WindSpeed: 5.5, // 5.5 m/s
+                WindAngle: 2.0, // ~114.6 degrees
+                Reference: 1,   // Apparent wind
+        }
+        msg = pgn.Message{
+                PGN:  130306,
+                Data: pgn.EncodeWindData(wind),
+        }
+        s.transport.SendPGN(msg)
+        if s.webSocket != nil </span><span class="cov8" title="1">{
+                s.webSocket.SendPGN(msg)
+        }</span>
 }
 </pre>
 		
