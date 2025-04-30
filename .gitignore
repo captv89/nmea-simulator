@@ -95,3 +95,5 @@ $RECYCLE.BIN/
 
 # Build binaries
 bin/
+# Added by goreleaser init:
+dist/
