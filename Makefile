@@ -70,6 +70,30 @@ run: build
 	@echo "  >  Running binary..."
 	./$(GOBIN)/$(BINARY_NAME)
 
+## release-check: Check goreleaser config
+.PHONY: release-check
+release-check:
+	@echo "  >  Checking goreleaser config..."
+	goreleaser check
+
+## release-build: Build release without publishing
+.PHONY: release-build
+release-build:
+	@echo "  >  Building release..."
+	goreleaser build --snapshot --clean
+
+## release: Create and publish a new release
+.PHONY: release
+release:
+	@echo "  >  Creating and publishing release..."
+	goreleaser release --clean
+
+## release-dry-run: Test release process without publishing
+.PHONY: release-dry-run
+release-dry-run:
+	@echo "  >  Testing release process..."
+	goreleaser release --snapshot --skip-publish --clean
+
 ## help: Show this help message
 .PHONY: help
 help:
