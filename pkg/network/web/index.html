@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NMEA Simulator - WebSocket Client</title>
     <style>
         body {
@@ -10,7 +12,17 @@
             background: #f0f0f0;
         }
 
-        #output {
+        .output-container {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .output-section {
+            flex: 1;
+        }
+
+        .output {
             background: #000;
             color: #0f0;
             padding: 10px;
@@ -28,62 +40,117 @@
             padding: 5px 10px;
             margin-right: 10px;
         }
+
+        .protocol-section {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
     </style>
 </head>
 
 <body>
     <h1>NMEA Simulator - WebSocket Client</h1>
-    <div class="controls">
-        <button onclick="connect()">Connect</button>
-        <button onclick="disconnect()">Disconnect</button>
-        <button onclick="clearOutput()">Clear</button>
+
+    <div class="output-container">
+        <div class="output-section">
+            <div class="protocol-section">
+                <h2>NMEA 0183</h2>
+                <div class="controls">
+                    <button onclick="connect('nmea0183')">Connect</button>
+                    <button onclick="disconnect('nmea0183')">Disconnect</button>
+                    <button onclick="clearOutput('nmea0183')">Clear</button>
+                </div>
+                <div id="output-nmea0183" class="output"></div>
+            </div>
+        </div>
+
+        <div class="output-section">
+            <div class="protocol-section">
+                <h2>NMEA 2000</h2>
+                <div class="controls">
+                    <button onclick="connect('nmea2000')">Connect</button>
+                    <button onclick="disconnect('nmea2000')">Disconnect</button>
+                    <button onclick="clearOutput('nmea2000')">Clear</button>
+                </div>
+                <div id="output-nmea2000" class="output"></div>
+            </div>
+        </div>
     </div>
-    <div id="output"></div>
 
     <script>
-        let ws = null;
-        const output = document.getElementById('output');
+        const connections = {
+            nmea0183: null,
+            nmea2000: null
+        };
 
-        function connect() {
-            if (ws) {
-                output.innerHTML += 'Already connected\n';
+        const ports = {
+            nmea0183: 8080,
+            nmea2000: 8081
+        };
+
+        function getWebSocketUrl(protocol) {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const hostname = window.location.hostname;
+            const port = ports[protocol];
+            const endpoint = protocol === 'nmea2000' ? '/nmea2000' : '/ws';
+            return `${wsProtocol}//${hostname}:${port}${endpoint}`;
+        }
+
+        function getOutput(protocol) {
+            return document.getElementById('output-' + protocol);
+        }
+
+        function appendOutput(protocol, text) {
+            const output = getOutput(protocol);
+            output.innerHTML += text + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function connect(protocol) {
+            if (connections[protocol]) {
+                appendOutput(protocol, 'Already connected');
                 return;
             }
 
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = protocol + '//' + window.location.host + '/ws';
+            const wsUrl = getWebSocketUrl(protocol);
+            appendOutput(protocol, `Connecting to ${wsUrl}...`);
 
-            output.innerHTML += `Connecting to ${wsUrl}...\n`;
-            ws = new WebSocket(wsUrl);
+            const ws = new WebSocket(wsUrl);
+            connections[protocol] = ws;
 
             ws.onopen = () => {
-                output.innerHTML += 'Connected!\n';
+                appendOutput(protocol, 'Connected!');
             };
 
             ws.onmessage = (event) => {
-                output.innerHTML += event.data + '\n';
-                output.scrollTop = output.scrollHeight;
+                appendOutput(protocol, event.data);
             };
 
             ws.onclose = () => {
-                output.innerHTML += 'Disconnected\n';
-                ws = null;
+                appendOutput(protocol, 'Disconnected');
+                connections[protocol] = null;
             };
 
             ws.onerror = (error) => {
-                output.innerHTML += 'Error: ' + error.message + '\n';
+                appendOutput(protocol, 'Error: ' + error.message);
             };
         }
 
-        function disconnect() {
-            if (ws) {
-                ws.close();
-                ws = null;
+        function disconnect(protocol) {
+            if (connections[protocol]) {
+                connections[protocol].close();
+                connections[protocol] = null;
             }
         }
 
-        function clearOutput() {
-            output.innerHTML = '';
+        function clearOutput(protocol) {
+            getOutput(protocol).innerHTML = '';
         }
     </script>
 </body>
