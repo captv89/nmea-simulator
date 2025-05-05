@@ -65,18 +65,23 @@ func (s *TCP2000Server) SendPGN(msg pgn.Message) error {
 
 	frame := formatPGNMessage(msg)
 
+	var failedClients []net.Conn
 	for client := range s.clients {
 		_, err := client.Write([]byte(frame))
 		if err != nil {
-			// Remove failed client
-			s.Mu.RUnlock()
-			s.Mu.Lock()
-			delete(s.clients, client)
-			client.Close()
-			s.Mu.Unlock()
-			s.Mu.RLock()
+			// Collect failed client
+			failedClients = append(failedClients, client)
 		}
 	}
+
+	// Remove failed clients
+	s.Mu.RUnlock()
+	s.Mu.Lock()
+	for _, client := range failedClients {
+		delete(s.clients, client)
+		client.Close()
+	}
+	s.Mu.Unlock()
 	return nil
 }
 
