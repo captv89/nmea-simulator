@@ -60,28 +60,29 @@ func (s *TCP2000Server) Stop() error {
 
 // SendPGN sends a NMEA 2000 message to all connected clients
 func (s *TCP2000Server) SendPGN(msg pgn.Message) error {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
-
 	frame := formatPGNMessage(msg)
-
 	var failedClients []net.Conn
+
+	// Read lock for iterating
+	s.Mu.RLock()
 	for client := range s.clients {
 		_, err := client.Write([]byte(frame))
 		if err != nil {
-			// Collect failed client
 			failedClients = append(failedClients, client)
 		}
 	}
-
-	// Remove failed clients
 	s.Mu.RUnlock()
-	s.Mu.Lock()
-	for _, client := range failedClients {
-		delete(s.clients, client)
-		client.Close()
+
+	// Write lock for removing failed clients
+	if len(failedClients) > 0 {
+		s.Mu.Lock()
+		for _, client := range failedClients {
+			delete(s.clients, client)
+			client.Close()
+		}
+		s.Mu.Unlock()
 	}
-	s.Mu.Unlock()
+
 	return nil
 }
 
